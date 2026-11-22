@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "aiden-connector",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  // global_fetch_strictly_public: required to fetch client metadata documents safely.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "observability": { "enabled": true },
+  // Bundle the brewing guide (skills/aiden-brewing/SKILL.md) as text; the server sends it to your AI app as instructions.
+  "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
+  // OAuth state, and a short-lived cache of the Fellow login token.
+  "kv_namespaces": [{ "binding": "OAUTH_KV","id": "58afb201e54e4f6dbb41f82e071e1939" }],
+  // Your profile library: coffees, profile versions, tasting notes, equipment.
+  "d1_databases": [{ "binding": "DB", "database_name": "aiden-library","database_id": "2b5bfcd0-b188-4657-86e0-ea17ec4c172b" }]
+}
