@@ -353,19 +353,20 @@ export function buildServer(env: ToolEnv): McpServer {
         const linked = [...(await library.links(await client.getProfiles(true))).entries()].find(([, r]) => r.id === id);
         if (linked) {
           const [aidenId] = linked;
-          if (changes.title !== undefined) {
-            // Fellow's PATCH validates the whole device record, so send the
-            // stored profile back with only the title changed. Sending just
-            // the title, or the library-shaped profile, is rejected.
-            // Brew-setting changes are recorded in the library version only;
-            // pushing them to the brewer needs Fellow's device format mapped.
-            const stored = (await client.findProfile(aidenId)) as Record<string, unknown>;
-            await client.updateProfile(aidenId, { ...stored, title: changes.title } as unknown as Json);
-            await library.setAidenId(saved.id, aidenId);
-            brewer = { updated: true, aidenId };
-          } else {
-            brewer = { updated: false, reason: "Only title changes are pushed to the brewer. Brew-setting changes are saved in the library version." };
-          }
+          // Fellow's PATCH accepts the brew fields but rejects server-managed
+          // metadata (id, deviceId, folder, timestamps, ...). Send the stored
+          // record stripped to the writable brew fields, with the revised
+          // settings applied, so title and setting changes both reach the brewer.
+          const stored = (await client.findProfile(aidenId)) as Record<string, unknown>;
+          const writable = ["profileType", "title", "ratio", "bloomEnabled", "bloomRatio", "bloomDuration", "bloomTemperature", "ssPulsesNumber", "ssPulsesInterval", "ssPulseTemperatures", "batchPulsesNumber", "batchPulsesInterval", "batchPulseTemperatures", "overallTemperature", "ssPulsesEnabled", "batchPulsesEnabled"];
+          const patch: Record<string, unknown> = {};
+          for (const k of writable) if (k in stored) patch[k] = stored[k];
+          const mergedRecord = merged as Record<string, unknown>;
+          for (const k of writable) if (k !== "profileType" && k in mergedRecord) patch[k] = mergedRecord[k];
+          if (changes.title !== undefined) patch.title = changes.title;
+          await client.updateProfile(aidenId, patch as unknown as Json);
+          await library.setAidenId(saved.id, aidenId);
+          brewer = { updated: true, aidenId };
         } else {
           brewer = { updated: false, reason: "The original is no longer on the brewer. Use brewer_load to put the new version on." };
         }
