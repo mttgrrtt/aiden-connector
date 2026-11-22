@@ -123,6 +123,22 @@ export function buildServer(env: ToolEnv): McpServer {
   );
 
   server.registerTool(
+    "brewer_get_profile",
+    {
+      title: "Read a brewer profile as Fellow stores it",
+      description:
+        "Return one profile from the brewer exactly as Fellow's API returns it, including device fields the library doesn't model. Read-only. Use it to see what Fellow expects before updating a profile.",
+      inputSchema: z.object({ aidenId: AidenId.describe("Profile id on the brewer, e.g. p4 (from brewer_status)") }),
+      annotations: { readOnlyHint: true },
+    },
+    safe(async ({ aidenId }) => {
+      const client = aiden();
+      await client.getDevice(true);
+      return ok(await client.findProfile(aidenId));
+    }),
+  );
+
+  server.registerTool(
     "brewer_adopt",
     {
       title: "Save brewer profiles to library",
@@ -337,13 +353,19 @@ export function buildServer(env: ToolEnv): McpServer {
         const linked = [...(await library.links(await client.getProfiles(true))).entries()].find(([, r]) => r.id === id);
         if (linked) {
           const [aidenId] = linked;
-        // PATCH only what changed: Fellow's update endpoint rejects the full
-          // library profile (bloom/pulse fields don't exist on a device profile,
-          // and library scales exceed its limits, e.g. ratio 16 vs max 5).
-          // For a rename this is just { title }.
-          await client.updateProfile(aidenId, changes);
-          await library.setAidenId(saved.id, aidenId);
-          brewer = { updated: true, aidenId };
+          if (changes.title !== undefined) {
+            // Fellow's PATCH validates the whole device record, so send the
+            // stored profile back with only the title changed. Sending just
+            // the title, or the library-shaped profile, is rejected.
+            // Brew-setting changes are recorded in the library version only;
+            // pushing them to the brewer needs Fellow's device format mapped.
+            const stored = (await client.findProfile(aidenId)) as Record<string, unknown>;
+            await client.updateProfile(aidenId, { ...stored, title: changes.title } as unknown as Json);
+            await library.setAidenId(saved.id, aidenId);
+            brewer = { updated: true, aidenId };
+          } else {
+            brewer = { updated: false, reason: "Only title changes are pushed to the brewer. Brew-setting changes are saved in the library version." };
+          }
         } else {
           brewer = { updated: false, reason: "The original is no longer on the brewer. Use brewer_load to put the new version on." };
         }
