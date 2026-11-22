@@ -337,7 +337,11 @@ export function buildServer(env: ToolEnv): McpServer {
         const linked = [...(await library.links(await client.getProfiles(true))).entries()].find(([, r]) => r.id === id);
         if (linked) {
           const [aidenId] = linked;
-          await client.updateProfile(aidenId, merged);
+        // PATCH only what changed: Fellow's update endpoint rejects the full
+          // library profile (bloom/pulse fields don't exist on a device profile,
+          // and library scales exceed its limits, e.g. ratio 16 vs max 5).
+          // For a rename this is just { title }.
+          await client.updateProfile(aidenId, changes);
           await library.setAidenId(saved.id, aidenId);
           brewer = { updated: true, aidenId };
         } else {
